@@ -21,8 +21,10 @@ exports.handler = async function(event, context) {
 
     switch (event.RequestType) {
       case 'Create':
-        await fromGit2S3({
+      case 'Update':
+          await fromGit2S3({
           gitRepoUrl: event.ResourceProperties.GitRepoUrl,
+          gitTag: event.ResourceProperties.GitTag,
           gitPath: event.ResourceProperties.GitPath,
           targetBucket: event.ResourceProperties.TargetBucket
           
@@ -48,7 +50,7 @@ exports.handler = async function(event, context) {
 
 let isGitInstalled = false;
 
-async function fromGit2S3({gitRepoUrl, gitPath, targetBucket}) {
+async function fromGit2S3({gitRepoUrl, gitTag, gitPath, targetBucket}) {
 
   if (!isGitInstalled) {
       console.log(`Installing git`);
@@ -56,8 +58,11 @@ async function fromGit2S3({gitRepoUrl, gitPath, targetBucket}) {
       isGitInstalled = true;
   }
   process.chdir(GIT_DIR_NAME);
+  await exec(`rm -fr ${CLONE_2_SUBFOLDER}`);
   await runGit(`clone --depth 1 ${gitRepoUrl} ${CLONE_2_SUBFOLDER}`);
-
+  process.chdir(CLONE_2_SUBFOLDER);
+  await runGit(`checkout tags/${gitTag}`);
+  process.chdir(GIT_DIR_NAME);
   console.log(`Uploading ${gitPath} to S3 bucket ${targetBucket}`);
 
   const prefixLength = `${CLONE_2_SUBFOLDER}/${gitPath}/`.length;
@@ -172,5 +177,5 @@ async function installGit() {
 
 async function runGit(gitCommand) {
     console.log(`Doing ${gitCommand}`);
-    await exec(`GIT_EXEC_PATH=usr/libexec/git-core usr/bin/git ${gitCommand}`);
+    await exec(`GIT_EXEC_PATH=${GIT_DIR_NAME}/usr/libexec/git-core ${GIT_DIR_NAME}/usr/bin/git ${gitCommand}`);
 }

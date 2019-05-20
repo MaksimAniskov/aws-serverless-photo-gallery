@@ -1,3 +1,2 @@
 .vscode/tasks.json
-*.template
-aws-exports.js
+serverless-photo-gallery.template

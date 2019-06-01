@@ -32,7 +32,8 @@ exports.handler = async function(event, context) {
         await s3.putObject({
           Bucket: event.ResourceProperties.TargetBucket,
           Key: 'aws-exports.js',
-          Body: event.ResourceProperties.AwsExportsJs
+          Body: event.ResourceProperties.AwsExportsJs,
+          ContentEncoding: 'text/javascript'
         }).promise();
         break;
       case 'Delete':
@@ -59,7 +60,7 @@ async function fromGit2S3({gitRepoUrl, gitTag, gitPath, targetBucket}) {
   }
   process.chdir(GIT_DIR_NAME);
   await exec(`rm -fr ${CLONE_2_SUBFOLDER}`);
-  await runGit(`clone --depth 1 ${gitRepoUrl} ${CLONE_2_SUBFOLDER}`);
+  await runGit(`clone ${gitRepoUrl} ${CLONE_2_SUBFOLDER}`);
   process.chdir(CLONE_2_SUBFOLDER);
   await runGit(`checkout tags/${gitTag}`);
   process.chdir(GIT_DIR_NAME);
@@ -69,13 +70,25 @@ async function fromGit2S3({gitRepoUrl, gitTag, gitPath, targetBucket}) {
   await Promise.all(
     readdirRecursive(`${CLONE_2_SUBFOLDER}/${gitPath}/`)
       .map(fileFullName => {
+        let ContentType;
+        switch (fileFullName.match(/\.([^\.]+)$/)[1]) {
+          case 'map': return;
+          case 'html': ContentType='text/html'; break;
+          case 'js': ContentType='text/javascript'; break;
+          case 'css': ContentType='text/css'; break;
+          case 'json': ContentType='application/json'; break;
+          case 'xml': ContentType='application/xml'; break;
+          case 'ico': ContentType='image/x-icon'; break;
+          case 'png': ContentType='image/png'; break;
+        }
         const fileStream = fs.createReadStream(fileFullName);
         fileStream.on('error', console.error);
-        console.log(fileFullName);
+        console.log(fileFullName, ContentType);
         return s3.upload({
           Bucket: targetBucket,
           Key: fileFullName.substring(prefixLength),
-          Body: fileStream
+          Body: fileStream,
+          ContentType
         }).promise();
       })
   );

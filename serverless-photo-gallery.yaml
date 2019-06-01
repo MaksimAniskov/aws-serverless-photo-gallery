@@ -515,7 +515,7 @@ Resources:
          - !If [CustomDomainName, !Ref DomainName, !Ref "AWS::NoValue"]
         Origins:
           - Id: s3
-            DomainName: !Sub ${ui}.s3-${AWS::Region}.amazonaws.com
+            DomainName: !Sub ${ui}.s3.${AWS::Region}.amazonaws.com
             S3OriginConfig:
               OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOAI}
           - Id: image-handler

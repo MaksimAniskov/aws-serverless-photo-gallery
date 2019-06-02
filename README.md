@@ -13,7 +13,7 @@ Upon signing in you will see following starting page.
 
 # Using
 
-The figure above shows so called browse mode when you see thumbnails of images in S3 bucket and navigate folders.
+The figure above shows so called browse mode when you see thumbnails of images and navigate folders.
 
 Click subfolder tile to jump to content of the folder.
 
@@ -86,13 +86,13 @@ Find your User Pool id among CloudFormation stack's outputs.
 This works uses [AWS Serverless Image Handler Lambda wrapper for Thumbor](https://github.com/awslabs/serverless-image-handler).
 
 Demo gallery uses images by
-<a href="https://pixabay.com/users/Free-Photos-242387/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=768803">Free-Photos</a>,
-<a href="https://pixabay.com/users/DEZALB-1045091/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=3072341">Albert Dezetter</a>,
-<a href="https://pixabay.com/users/Engin_Akyurt-3656355/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=1973830">engin akyurt</a>,
-<a href="https://pixabay.com/users/Mariamichelle-165491/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=3274226">Michelle Maria</a>,
-<a href="https://pixabay.com/users/jtyoder-601591/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=542082">Jon Toy</a>,
-<a href="https://pixabay.com/users/Connectingdots-919354/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=853048">Peter Vandecaveye</a>
-from <a href="https://pixabay.com/?utm_source=link-attribution&amp;utm_medium=referral&amp;utm_campaign=image&amp;utm_content=768803">Pixabay</a>.
+[Free-Photos](https://pixabay.com/users/Free-Photos-242387/),
+[Albert Dezetter](https://pixabay.com/users/DEZALB-1045091/),
+[engin akyurt](https://pixabay.com/users/Engin_Akyurt-3656355/),
+[Michelle Maria](https://pixabay.com/users/Mariamichelle-165491/),
+[Jon Toy](https://pixabay.com/users/jtyoder-601591/),
+[Peter Vandecaveye](https://pixabay.com/users/Connectingdots-919354/)
+from [Pixabay](https://pixabay.com/).
 
 ***
-Copyright 2019 Maksim Ansikov MaksimAniskov@gmail.com Read LICENSE.txt
+Copyright 2019 Maksim Aniskov MaksimAniskov@gmail.com Read LICENSE.txt

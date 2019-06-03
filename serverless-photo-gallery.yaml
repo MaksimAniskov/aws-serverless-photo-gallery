@@ -25,7 +25,7 @@ Parameters:
   AcmCertificateArn:
     Type: String
     Default: ""
-    Description: Must be in the US East (N. Virginia) region
+    Description: Must be in us-east-1 (N. Virginia) region
 
   KeyPairId:
     Type: String
@@ -634,6 +634,9 @@ Resources:
             Resource: !Sub ${ui.Arn}
 
 Outputs:
+
+  CloudFrontDistributionDomainName:
+    Value: !GetAtt CloudFrontDistribution.DomainName
 
   GalleryUrl:
     Value: !Sub

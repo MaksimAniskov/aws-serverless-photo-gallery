@@ -5,7 +5,7 @@
 # Demo
 
 Visit live demo at https://demo-gallery.aniskov.com/
-Sign in there using user name ```username```, and password ```password```.
+Sign in there using user name ```user```, and password ```password```.
 
 Upon signing in you will see following starting page.
 

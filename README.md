@@ -1,3 +1,5 @@
+{"key":"Portraits/sanjeevan-satheeskumar-322856-unsplash.jpg","edits":{"resize":240}}
+
 # Architecture
 
 ![Architecture](README.images/architecture.svg "Architecture")
@@ -83,7 +85,7 @@ Find your User Pool id among CloudFormation stack's outputs.
 
 # Credits
 
-This works uses [AWS Serverless Image Handler Lambda wrapper for Thumbor](https://github.com/awslabs/serverless-image-handler).
+This works uses [AWS Serverless Image Handler Lambda wrapper for SharpJS](https://github.com/awslabs/serverless-image-handler).
 
 Demo gallery uses images by
 [Free-Photos](https://pixabay.com/users/Free-Photos-242387/),

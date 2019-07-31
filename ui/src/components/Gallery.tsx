@@ -56,12 +56,10 @@ const Gallery: React.FunctionComponent<Props> = (props) => {
                 if (props.index >= images.length) {
                     return <Note caption="The end" />;
                 } else {
-                    const imgDimensions = approximateWindowsDimensions();
                     return (
                         <div>
                             <img
-                                src={`/image/fit-in/${imgDimensions.width}x${imgDimensions.height}/${encodeURIComponent(images[props.index])}`
-                                }
+                                src={generateImageUrl(images[props.index])}
                                 className="center"
                                 alt={images[props.index]}
                             />
@@ -69,14 +67,14 @@ const Gallery: React.FunctionComponent<Props> = (props) => {
                             { // Hidden next photo to force caching it upfront
                                 props.index + 1 < images.length &&
                                 <img width="0" height="0"
-                                    src={`/image/fit-in/${imgDimensions.width}x${imgDimensions.height}/${encodeURIComponent(images[props.index + 1])}`}
+                                    src={generateImageUrl(images[props.index+1])}
                                     alt={''}
                                 />
                             }
                             { // Hidden prev photo to force caching it upfront
                                 props.index > 0 &&
                                 <img width="0" height="0"
-                                    src={`/image/fit-in/${imgDimensions.width}x${imgDimensions.height}/${encodeURIComponent(images[props.index - 1])}`}
+                                    src={generateImageUrl(images[props.index-1])}
                                     alt={''}
                                 />
                             }
@@ -87,6 +85,14 @@ const Gallery: React.FunctionComponent<Props> = (props) => {
         </Swipe>
     );
 
+    function generateImageUrl(image: string) {
+        const imgDimensions = approximateWindowsDimensions();
+        return '/image/' +
+            btoa(JSON.stringify({
+                key: image,
+                edits: { resize: { width: imgDimensions.width, height: imgDimensions.height, fit: 'contain' } }
+            }));
+    }
 
     function prev(e?: React.SyntheticEvent) {
         e && e.preventDefault();

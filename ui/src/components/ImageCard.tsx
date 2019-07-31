@@ -13,7 +13,10 @@ const ImageCard: React.FunctionComponent<Props> = (props) => {
             onClick={props.onClick}
         >
             <Card.Img
-                src={'/image/240x240/smart/' + props.url}
+                src={'/image/' + btoa(JSON.stringify({
+                    key: props.url,
+                    edits: { resize: { width: 240, height: 240 } }
+                }))}
                 variant="top"
             />
         </Card>

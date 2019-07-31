@@ -48,7 +48,6 @@ const Folders: React.FunctionComponent<Props> = (props) => {
                 </CardDeck>
                 <CardDeck className="images">
                     {images.map((image, i) => {
-                        image = encodeURIComponent(image);
                         return (
                             <ImageCard
                                 key={image}

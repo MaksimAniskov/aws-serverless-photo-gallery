@@ -1,5 +1,3 @@
-{"key":"Portraits/sanjeevan-satheeskumar-322856-unsplash.jpg","edits":{"resize":240}}
-
 # Architecture
 
 ![Architecture](README.images/architecture.svg "Architecture")

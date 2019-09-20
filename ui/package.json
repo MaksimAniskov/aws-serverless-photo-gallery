@@ -1,7 +1,7 @@
 {
   "name": "aws-serverless-photo-gallery",
   "description": "Web UI ",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "repository": {
     "type": "git",
     "url": "https://github.com/MaksimAniskov/aws-serverless-photo-gallery.git"

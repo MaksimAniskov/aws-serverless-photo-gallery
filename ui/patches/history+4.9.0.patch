@@ -1,0 +1,25 @@
+See https://github.com/ReactTraining/history/issues/505
+and https://github.com/ReactTraining/history/pull/656
+Fix is sheduled for history@5.0 Can hardly wait it.
+
+diff --git a/node_modules/history/esm/history.js b/node_modules/history/esm/history.js
+index fc4a0e8..5b2402d 100644
+--- a/node_modules/history/esm/history.js
++++ b/node_modules/history/esm/history.js
+@@ -80,16 +80,6 @@ function createLocation(path, state, key, currentLocation) {
+     if (state !== undefined && location.state === undefined) location.state = state;
+   }
+ 
+-  try {
+-    location.pathname = decodeURI(location.pathname);
+-  } catch (e) {
+-    if (e instanceof URIError) {
+-      throw new URIError('Pathname "' + location.pathname + '" could not be decoded. ' + 'This is likely caused by an invalid percent-encoding.');
+-    } else {
+-      throw e;
+-    }
+-  }
+-
+   if (key) location.key = key;
+ 
+   if (currentLocation) {

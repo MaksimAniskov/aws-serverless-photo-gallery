@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card } from "react-bootstrap";
+import * as utils from "../utils";
 
 interface Props {
     url: string,
@@ -13,7 +14,7 @@ const ImageCard: React.FunctionComponent<Props> = (props) => {
             onClick={props.onClick}
         >
             <Card.Img
-                src={'/image/' + btoa(JSON.stringify({
+                src={'/image/' + utils.base64encode(JSON.stringify({
                     key: props.url,
                     edits: { resize: { width: 240, height: 240 } }
                 }))}

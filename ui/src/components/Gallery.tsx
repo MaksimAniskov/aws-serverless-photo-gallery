@@ -5,6 +5,8 @@ import Swipe from 'react-easy-swipe';
 import * as data from '../data';
 import Note from './Note';
 
+import * as utils from "../utils";
+
 interface Props {
     path: string,
     index: number,
@@ -88,7 +90,7 @@ const Gallery: React.FunctionComponent<Props> = (props) => {
     function generateImageUrl(image: string) {
         const imgDimensions = approximateWindowsDimensions();
         return '/image/' +
-            btoa(JSON.stringify({
+            utils.base64encode(JSON.stringify({
                 key: image,
                 edits: { resize: { width: imgDimensions.width, height: imgDimensions.height, fit: 'contain' } }
             }));

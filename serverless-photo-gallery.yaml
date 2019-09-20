@@ -597,7 +597,7 @@ Resources:
     Properties:
       TargetBucket: !Ref ui
       GitRepoUrl: https://github.com/MaksimAniskov/aws-serverless-photo-gallery.git
-      GitTag: v1.1.0
+      GitTag: v1.1.1
       GitPath: ui/build
       AwsExportsJs: !Sub |
         window.AWS_EXPORTS = {

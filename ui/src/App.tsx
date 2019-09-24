@@ -131,19 +131,21 @@ const App: React.FunctionComponent<Props> = (props) => {
     const result = await API.graphql(graphqlOperation(getSignedCookies)) as GraphQLResult;
     const data: GetSignedCookiesQuery = result.data as GetSignedCookiesQuery;
 
-    data.getSignedCookies && data.getSignedCookies.forEach((nameValuePair) => {
-      if (!nameValuePair) {
-        return;
-      }
-      props.cookies.set(
-        nameValuePair.name,
-        nameValuePair.value,
-        {
-          path: '/image',
-          secure: true
+    if(data.getSignedCookies) {
+      data.getSignedCookies.forEach((nameValuePair) => {
+        if (!nameValuePair) {
+          return;
         }
-      );
-    });
+        props.cookies.set(
+          nameValuePair.name,
+          nameValuePair.value,
+          {
+            path: '/image',
+            secure: true
+          }
+        );
+      });
+    }
   }
 
   function signOut(): void {

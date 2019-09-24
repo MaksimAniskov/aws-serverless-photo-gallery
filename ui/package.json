@@ -35,12 +35,12 @@
   "devDependencies": {
     "@types/react-infinite-scroller": "^1.2.1",
     "@types/react-router-dom": "^4.3.2",
-    "@typescript-eslint/eslint-plugin": "^1.7.0",
-    "@typescript-eslint/parser": "^1.7.0",
-    "eslint-plugin-react-hooks": "^1.6.0",
+    "@typescript-eslint/eslint-plugin": "^2.3.1",
+    "@typescript-eslint/parser": "^2.3.1",
+    "eslint-plugin-react-hooks": "^2.0.1",
     "patch-package": "^6.2.0",
-    "react-scripts": "^2.1.8",
-    "typescript": "^3.3.3333"
+    "react-scripts": "^3.1.2",
+    "typescript": "^3.6.3"
   },
   "scripts": {
     "postinstall": "patch-package",

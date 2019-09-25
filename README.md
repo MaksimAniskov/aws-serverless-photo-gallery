@@ -63,10 +63,10 @@ Scroll down to find Deploy button. Click it.
 ## Manual steps to be taken after deployment
 
 1. Pay attention that stack you created got prefix _serverlessrepo-_ to its name automatically.
-<br/>Create SSM parameter of Secure String type with name /_stack-name_/CLOUD_FORMATION_PRIVATE_KEY replacing _stack-name_ with your value, e.g. _serverlessrepo-photo-galery_.
+<br/>Create SSM parameter of Secure String type with name /_stack-name_/CLOUDFRONT_PRIVATE_KEY replacing _stack-name_ with your value, e.g. _serverlessrepo-photo-galery_.
 <br/>Set its value to CloudFront private key (see Prerequisites) preserving newline characters.
 You can do that with following AWS CLI command (don't forget to replace _stack-name_!) 
-> aws ssm put-parameter --type SecureString --name /_stack-name_/CLOUD_FORMATION_PRIVATE_KEY --value file://_private_key.pem_
+> aws ssm put-parameter --type SecureString --name /_stack-name_/CLOUDFRONT_PRIVATE_KEY --value file://_private_key.pem_
 
 2. The application leverages awesome [Serverless Image Handler by AWS](https://github.com/awslabs/serverless-image-handler) which by default is configured to send usage data to AWS. In case you don't want posting such data to AWS, open AWS Lambda Console, find ```ServerlessImage-ImageHandlerFunction``` function, open it for editing, go to Environment variables, and set ```SEND_ANONYMOUS_DATA``` to ```No```.
 

@@ -390,7 +390,7 @@ Resources:
           WILDCARD: !Sub
             - https://${DomainName}/image/*
             - DomainName: !If [CustomDomainName, !Ref DomainName, !GetAtt CloudFrontDistribution.DomainName]
-          CLOUD_FORMATION_PRIVATE_KEY_SSM_PARAM_NAME: !Sub /${AWS::StackName}/CLOUD_FORMATION_PRIVATE_KEY
+          CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME: !Sub /${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
       Code:
         ZipFile: |
           const AWS = require('aws-sdk');
@@ -420,7 +420,7 @@ Resources:
               if (!_signer) {
                   const ssm = new AWS.SSM();
                   const cloudFormationPrivateKey = await ssm.getParameter({
-                      Name: process.env.CLOUD_FORMATION_PRIVATE_KEY_SSM_PARAM_NAME,
+                      Name: process.env.CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME,
                       WithDecryption: true
                   }).promise();
 
@@ -512,7 +512,7 @@ Resources:
           Statement:
             Effect: Allow
             Action: ssm:GetParameter
-            Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/CLOUD_FORMATION_PRIVATE_KEY
+            Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution

@@ -391,36 +391,46 @@ Resources:
             - https://${DomainName}/image/*
             - DomainName: !If [CustomDomainName, !Ref DomainName, !GetAtt CloudFrontDistribution.DomainName]
           CLOUD_FORMATION_PRIVATE_KEY_SSM_PARAM_NAME: !Sub /${AWS::StackName}/CLOUD_FORMATION_PRIVATE_KEY
-      Layers:
-      - !Ref AwsCloudFrontSignLayer
       Code:
         ZipFile: |
-          const { getSignedCookies } = require('/opt/node_modules/aws-cloudfront-sign');
           const AWS = require('aws-sdk');
-          const ssm = new AWS.SSM();
 
-          exports.handler = async (event) => {
-              const cloudFormationPrivateKey = await ssm.getParameter({
-                    Name: process.env.CLOUD_FORMATION_PRIVATE_KEY_SSM_PARAM_NAME,
-                    WithDecryption: true
-                }).promise();
+          exports.handler = async(event) => {
+              const cookies = (await getSigner()).getSignedCookie({
+                  policy: JSON.stringify({
+                      Statement: [{
+                          Resource: process.env.WILDCARD,
+                          Condition: {
+                              DateLessThan: {
+                                  "AWS:EpochTime": new Date().getTime() + 8 * 3600 * 1000
+                              }
+                          }
 
-              const cookies = getSignedCookies(
-                  process.env.WILDCARD,
-                  {
-                      keypairId: process.env.KEY_PAIR_ID,
-                      privateKeyString: cloudFormationPrivateKey.Parameter.Value.split('\n').join("\n"),
-                      expireTime: new Date().getTime() + 8*3600*1000
-                  }
-              );
-              return Object.keys(cookies).map(name => ({name, value: cookies[name]}))
+                      }]
+
+                  })
+              });
+
+              return Object.keys(cookies).map(name => ({ name, value: cookies[name] }))
           };
 
-  AwsCloudFrontSignLayer:
-    Type: AWS::Serverless::LayerVersion
-    Properties:
-      ContentUri: aws-lambda/aws-cloudfront-sign
-      RetentionPolicy: Delete
+          let _signer;
+
+          async function getSigner() {
+              if (!_signer) {
+                  const ssm = new AWS.SSM();
+                  const cloudFormationPrivateKey = await ssm.getParameter({
+                      Name: process.env.CLOUD_FORMATION_PRIVATE_KEY_SSM_PARAM_NAME,
+                      WithDecryption: true
+                  }).promise();
+
+                  _signer = new AWS.CloudFront.Signer(
+                      process.env.KEY_PAIR_ID,
+                      cloudFormationPrivateKey.Parameter.Value.split('\n').join("\n")
+                  );
+              };
+              return _signer;
+          }
 
   CognitoUserPool:
     Type: AWS::Cognito::UserPool

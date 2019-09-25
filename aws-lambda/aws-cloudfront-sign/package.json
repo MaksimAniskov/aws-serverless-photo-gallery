@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "aws-cloudfront-sign": "^2.2.0"
-  }
-}

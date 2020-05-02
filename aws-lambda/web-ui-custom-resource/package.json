@@ -1,0 +1,16 @@
+{
+  "name": "zip2s3-cloudformation-custom-resource",
+  "description": "CloudFormation Custom Resource for copying ZIP archive content to S3 bucket",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Maksim Aniskov <maksimaniskov@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MaksimAniskov/aws-serverless-photo-gallery.git"
+  },
+  "dependencies": {
+    "mime": "^2.4.5",
+    "unzipper": "^0.10.11"
+  }
+}

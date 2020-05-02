@@ -1,18 +1,11 @@
 const https = require('https');
 const url = require('url');
+const unzipper = require('unzipper');
+const mime = require('mime/lite');
 const aws = require('aws-sdk');
-const util = require('util');
-const exec = util.promisify(require('child_process').exec);
-const fs = require('fs');
 const s3 = new aws.S3();
 
-const GIT_RMP_NAME = 'git-2.13.5-1.53.amzn1.x86_64.rpm';
-const GIT_RMP_DOWNLOAD_URL = `http://packages.${process.env.AWS_REGION}.amazonaws.com/2017.03/updates/ba2b87ec77c7/x86_64/Packages/${GIT_RMP_NAME}`;
-const GIT_RMP_DOWNLOAD_FALLBACK_URL = `http://packages.us-east-1.amazonaws.com/2017.03/updates/ba2b87ec77c7/x86_64/Packages/${GIT_RMP_NAME}`;
-const GIT_DIR_NAME = '/tmp/git-2.13.5';
-const CLONE_2_SUBFOLDER = 'download';
-
-exports.handler = async function(event, context) {
+exports.handler = async function (event, context) {
   console.log('event:', JSON.stringify(event));
   try {
     let responseData = {
@@ -22,18 +15,16 @@ exports.handler = async function(event, context) {
     switch (event.RequestType) {
       case 'Create':
       case 'Update':
-          await fromGit2S3({
-          gitRepoUrl: event.ResourceProperties.GitRepoUrl,
-          gitTag: event.ResourceProperties.GitTag,
+        await fromGit2S3({
+          gitArchiveUrl: event.ResourceProperties.GitArchiveUrl,
           gitPath: event.ResourceProperties.GitPath,
           targetBucket: event.ResourceProperties.TargetBucket
-          
         });
         await s3.putObject({
           Bucket: event.ResourceProperties.TargetBucket,
           Key: 'aws-exports.js',
           Body: event.ResourceProperties.AwsExportsJs,
-          ContentEncoding: 'text/javascript'
+          ContentType: 'text/javascript'
         }).promise();
         break;
       case 'Delete':
@@ -43,83 +34,53 @@ exports.handler = async function(event, context) {
 
     console.log('responseData:', JSON.stringify(responseData));
     await sendResponse(event, context, 'SUCCESS', responseData);
-  } catch(e) {
+  } catch (e) {
     console.error(e);
     await sendResponse(event, context, 'FAILED');
   }
 };
 
-let isGitInstalled = false;
+async function fromGit2S3({ gitArchiveUrl, gitPath, targetBucket }) {
+  return new Promise((resolve, reject) => {
+    const regexp = `.*/${gitPath}/(.*\\.([^.]+))`;
 
-async function fromGit2S3({gitRepoUrl, gitTag, gitPath, targetBucket}) {
+    https.get(gitArchiveUrl, async (res) => {
+      res
+        .pipe(unzipper.Parse())
+        .on('entry', async (entry) => {
+          const match = entry.path.match(regexp);
+          if (!match) {
+            entry.autodrain();
+            return;
+          }
 
-  if (!isGitInstalled) {
-      console.log(`Installing git`);
-      await installGit();
-      isGitInstalled = true;
-  }
-  process.chdir(GIT_DIR_NAME);
-  await exec(`rm -fr ${CLONE_2_SUBFOLDER}`);
-  await runGit(`clone ${gitRepoUrl} ${CLONE_2_SUBFOLDER}`);
-  process.chdir(CLONE_2_SUBFOLDER);
-  await runGit(`checkout tags/${gitTag}`);
-  process.chdir(GIT_DIR_NAME);
-  console.log(`Uploading ${gitPath} to S3 bucket ${targetBucket}`);
+          const fileName = match[1];
+          const fileExtension = match[2];
+          console.log(fileName);
 
-  const prefixLength = `${CLONE_2_SUBFOLDER}/${gitPath}/`.length;
-  await Promise.all(
-    readdirRecursive(`${CLONE_2_SUBFOLDER}/${gitPath}/`)
-      .map(fileFullName => {
-        let ContentType;
-        switch (fileFullName.match(/\.([^\.]+)$/)[1]) {
-          case 'map': return;
-          case 'html': ContentType='text/html'; break;
-          case 'js': ContentType='text/javascript'; break;
-          case 'css': ContentType='text/css'; break;
-          case 'json': ContentType='application/json'; break;
-          case 'xml': ContentType='application/xml'; break;
-          case 'ico': ContentType='image/x-icon'; break;
-          case 'png': ContentType='image/png'; break;
-        }
-        const fileStream = fs.createReadStream(fileFullName);
-        fileStream.on('error', console.error);
-        console.log(fileFullName, ContentType);
-        return s3.upload({
-          Bucket: targetBucket,
-          Key: fileFullName.substring(prefixLength),
-          Body: fileStream,
-          ContentType
-        }).promise();
-      })
-  );
-  console.log('Uploaded');
-
-  function readdirRecursive(path) {
-    let result = [];
-    fs.readdirSync(path)
-      .forEach(name => {
-        const fullName = path + name;
-        if (fs.statSync(fullName).isDirectory()) {
-            result = result.concat(readdirRecursive(fullName + '/'));
-        } else {
-            result.push(fullName);
-        }
-      });
-    return result;
-  }
-
-};
+          await s3.putObject({
+            Bucket: targetBucket,
+            Key: fileName,
+            Body: await entry.buffer(),
+            ContentType: mime.getType(fileExtension)
+          }).promise();
+        })
+        .on('error', reject)
+        .on('finish', resolve)
+    });
+  });
+}
 
 async function deleteAllObjectsInS3Bucket(Bucket) {
   let ContinuationToken;
   while (true) {
-    const objects = await s3.listObjectsV2({Bucket, ContinuationToken}).promise();
+    const objects = await s3.listObjectsV2({ Bucket, ContinuationToken }).promise();
     console.log('In deleteAllObjectsInS3Bucket. objects:', objects);
     if (!objects.KeyCount) break;
     await s3.deleteObjects({
       Bucket,
       Delete: {
-        Objects: objects.Contents.map(({Key}) => ({Key}))
+        Objects: objects.Contents.map(({ Key }) => ({ Key }))
       }
     }).promise();
     ContinuationToken = objects.NextContinuationToken;
@@ -128,14 +89,14 @@ async function deleteAllObjectsInS3Bucket(Bucket) {
 }
 
 // Send response to the pre-signed S3 URL
-function sendResponse (event, context, responseStatus, responseData) {
+function sendResponse(event, context, responseStatus, responseData) {
   let PhysicalResourceId;
   if (responseData && responseData.PhysicalResourceId) {
     PhysicalResourceId = responseData.PhysicalResourceId;
   } else if (event.PhysicalResourceId) {
     PhysicalResourceId = event.PhysicalResourceId;
   }
-  const  responseBody = JSON.stringify({
+  const responseBody = JSON.stringify({
     Status: responseStatus,
     Reason: `See the details in CloudWatch Log Stream ${context.logGroupName}/${context.logStreamName}`,
     PhysicalResourceId,
@@ -167,28 +128,4 @@ function sendResponse (event, context, responseStatus, responseData) {
     request.write(responseBody);
     request.end();
   });
-}
-
-async function installGit() {
-    await exec([
-            `rm -fr ${GIT_DIR_NAME}`,
-            `mkdir ${GIT_DIR_NAME}`
-        ].join('&&'));
-    process.chdir(GIT_DIR_NAME);
-    try {
-        await exec(`curl -s -O ${GIT_RMP_DOWNLOAD_URL}`);
-    } catch(e) {
-        console.error(e);
-        await exec(`curl -s -O ${GIT_RMP_DOWNLOAD_FALLBACK_URL}`);
-    }
-    await exec([
-            `rpm -K ${GIT_RMP_NAME}`,
-            `rpm2cpio ${GIT_RMP_NAME} | cpio -id`,
-            `rm ${GIT_RMP_NAME}`
-        ].join('&&'));
-}
-
-async function runGit(gitCommand) {
-    console.log(`Doing ${gitCommand}`);
-    await exec(`GIT_EXEC_PATH=${GIT_DIR_NAME}/usr/libexec/git-core ${GIT_DIR_NAME}/usr/bin/git ${gitCommand}`);
 }

@@ -297,7 +297,7 @@ Resources:
   ListImages:
     Type: AWS::Lambda::Function
     Properties: 
-      Runtime: nodejs8.10
+      Runtime: nodejs12.x
       Handler: index.handler
       Role: !GetAtt ListImagesLambdaRole.Arn
       Environment:
@@ -338,7 +338,7 @@ Resources:
   ListSubfolders:
     Type: AWS::Lambda::Function
     Properties: 
-      Runtime: nodejs8.10
+      Runtime: nodejs12.x
       Handler: index.handler
       Role: !GetAtt ListImagesLambdaRole.Arn
       Environment:
@@ -381,7 +381,7 @@ Resources:
   GetSignedCookies:
     Type: AWS::Lambda::Function
     Properties: 
-      Runtime: nodejs8.10
+      Runtime: nodejs12.x
       Handler: index.handler
       Role: !GetAtt GetSignedCookiesLambdaRole.Arn
       Environment:
@@ -606,8 +606,7 @@ Resources:
     Type: Custom::LoadLambda
     Properties:
       TargetBucket: !Ref ui
-      GitRepoUrl: https://github.com/MaksimAniskov/aws-serverless-photo-gallery.git
-      GitTag: v1.2.0
+      GitArchiveUrl: https://codeload.github.com/MaksimAniskov/aws-serverless-photo-gallery/zip/v1.3.0
       GitPath: ui/build
       AwsExportsJs: !Sub |
         window.AWS_EXPORTS = {
@@ -622,7 +621,7 @@ Resources:
   WebUiCustomResource:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: nodejs8.10
+      Runtime: nodejs12.x
       Handler: index.handler
       ReservedConcurrentExecutions: 1
       MemorySize: 256

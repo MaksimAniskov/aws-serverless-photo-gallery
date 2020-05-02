@@ -95,4 +95,4 @@ Demo gallery uses images by
 from [Pixabay](https://pixabay.com/).
 
 ***
-Copyright 2019 Maksim Aniskov MaksimAniskov@gmail.com Read LICENSE.txt
+Copyright 2019-2020 Maksim Aniskov MaksimAniskov@gmail.com Read LICENSE.txt

@@ -598,11 +598,20 @@ Resources:
       Bucket: !Ref ui
       PolicyDocument:
         Statement:
-          Effect: Allow
-          Principal:
-            CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
-          Action: s3:GetObject
-          Resource: !Sub ${ui.Arn}/*
+          - Effect: Allow
+            Principal:
+              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+            Action: s3:GetObject
+            Resource: !Sub ${ui.Arn}/*
+          - Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !Sub ${ui.Arn}
+              - !Sub ${ui.Arn}/*
+            Condition:
+              Bool:
+                "aws:SecureTransport": "false"
 
   WebUI:
     Type: Custom::LoadLambda

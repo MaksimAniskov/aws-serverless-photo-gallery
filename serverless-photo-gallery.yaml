@@ -617,7 +617,7 @@ Resources:
     Type: Custom::LoadLambda
     Properties:
       TargetBucket: !Ref ui
-      GitArchiveUrl: https://codeload.github.com/MaksimAniskov/aws-serverless-photo-gallery/zip/v1.3.0
+      GitArchiveUrl: https://codeload.github.com/MaksimAniskov/aws-serverless-photo-gallery/zip/1.3.1
       GitPath: ui/build
       AwsExportsJs: !Sub |
         window.AWS_EXPORTS = {

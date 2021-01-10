@@ -4,7 +4,6 @@ Description: Private Serverless Photo Gallery
 Transform: AWS::Serverless-2016-10-31
 
 Parameters:
-
   ImagesS3BucketRegion:
     Type: String
 
@@ -50,27 +49,26 @@ Parameters:
     Description: This address will receive a message with temporal password
 
 Metadata:
-
   AWS::CloudFormation::Interface:
-    ParameterGroups: 
-    - Label: 
-        default: Where are your images?
-      Parameters:
-      - ImagesS3Bucket
-      - ImagesS3BucketRegion
-      - ImagesS3Prefix
-    - Label: 
-        default: How will we publish the application?
-      Parameters: 
-      - DomainName
-      - AcmCertificateArn
-      - KeyPairId
-      - CloudFrontPriceClass
-    - Label: 
-        default: Create gallery user?
-      Parameters: 
-      - UserName
-      - UserEmail
+    ParameterGroups:
+      - Label:
+          default: Where are your images?
+        Parameters:
+          - ImagesS3Bucket
+          - ImagesS3BucketRegion
+          - ImagesS3Prefix
+      - Label:
+          default: How will we publish the application?
+        Parameters:
+          - DomainName
+          - AcmCertificateArn
+          - KeyPairId
+          - CloudFrontPriceClass
+      - Label:
+          default: Create gallery user?
+        Parameters:
+          - UserName
+          - UserEmail
 
     ParameterLabels:
       ImagesS3Bucket:
@@ -99,7 +97,6 @@ Conditions:
     - !Not [!Equals [!Ref UserEmail, ""]]
 
 Resources:
-
   ServerlessImageHandler:
     Type: AWS::CloudFormation::Stack
     Properties:
@@ -296,7 +293,7 @@ Resources:
 
   ListImages:
     Type: AWS::Lambda::Function
-    Properties: 
+    Properties:
       Runtime: nodejs12.x
       Handler: index.handler
       Role: !GetAtt ListImagesLambdaRole.Arn
@@ -337,7 +334,7 @@ Resources:
 
   ListSubfolders:
     Type: AWS::Lambda::Function
-    Properties: 
+    Properties:
       Runtime: nodejs12.x
       Handler: index.handler
       Role: !GetAtt ListImagesLambdaRole.Arn
@@ -380,7 +377,7 @@ Resources:
 
   GetSignedCookies:
     Type: AWS::Lambda::Function
-    Properties: 
+    Properties:
       Runtime: nodejs12.x
       Handler: index.handler
       Role: !GetAtt GetSignedCookiesLambdaRole.Arn
@@ -389,7 +386,12 @@ Resources:
           KEY_PAIR_ID: !Ref KeyPairId
           WILDCARD: !Sub
             - https://${DomainName}/image/*
-            - DomainName: !If [CustomDomainName, !Ref DomainName, !GetAtt CloudFrontDistribution.DomainName]
+            - DomainName:
+                !If [
+                  CustomDomainName,
+                  !Ref DomainName,
+                  !GetAtt CloudFrontDistribution.DomainName,
+                ]
           CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME: !Sub /${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
       Code:
         ZipFile: |
@@ -461,65 +463,65 @@ Resources:
     Properties:
       AssumeRolePolicyDocument:
         Statement:
-        - Effect: Allow
-          Principal:
-            Service: appsync.amazonaws.com
-          Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service: appsync.amazonaws.com
+            Action: sts:AssumeRole
       Policies:
-      - PolicyName: Lambda
-        PolicyDocument:
-          Statement:
-            Effect: Allow
-            Action: lambda:InvokeFunction
-            Resource:
-            - !GetAtt ListImages.Arn
-            - !GetAtt ListSubfolders.Arn
-            - !GetAtt GetSignedCookies.Arn
+        - PolicyName: Lambda
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource:
+                - !GetAtt ListImages.Arn
+                - !GetAtt ListSubfolders.Arn
+                - !GetAtt GetSignedCookies.Arn
 
   ListImagesLambdaRole:
     Type: AWS::IAM::Role
-    Properties: 
+    Properties:
       AssumeRolePolicyDocument:
         Statement:
-        - Effect: Allow
-          Principal:
-            Service: lambda.amazonaws.com
-          Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
       ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-      - PolicyName: S3
-        PolicyDocument:
-          Statement:
-            Effect: Allow
-            Action: s3:ListBucket
-            Resource: !Sub arn:aws:s3:::${ImagesS3Bucket}
+        - PolicyName: S3
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action: s3:ListBucket
+              Resource: !Sub arn:aws:s3:::${ImagesS3Bucket}
 
   GetSignedCookiesLambdaRole:
     Type: AWS::IAM::Role
-    Properties: 
+    Properties:
       AssumeRolePolicyDocument:
         Statement:
-        - Effect: Allow
-          Principal:
-            Service: lambda.amazonaws.com
-          Action: sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
       ManagedPolicyArns:
-      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-      - PolicyName: SSM
-        PolicyDocument:
-          Statement:
-            Effect: Allow
-            Action: ssm:GetParameter
-            Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
+        - PolicyName: SSM
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
-      DistributionConfig: 
+      DistributionConfig:
         Aliases:
-         - !If [CustomDomainName, !Ref DomainName, !Ref "AWS::NoValue"]
+          - !If [CustomDomainName, !Ref DomainName, !Ref "AWS::NoValue"]
         Origins:
           - Id: s3
             DomainName: !Sub ${ui}.s3.${AWS::Region}.amazonaws.com
@@ -546,18 +548,18 @@ Resources:
               Forward: none
             QueryString: no
         CacheBehaviors:
-        - PathPattern: image/*
-          AllowedMethods:
-            - GET
-            - HEAD
-          TargetOriginId: image-handler
-          TrustedSigners:
-          - !Ref AWS::AccountId
-          ForwardedValues:
-            QueryString: no
-            Cookies:
-              Forward: none
-          ViewerProtocolPolicy: https-only
+          - PathPattern: image/*
+            AllowedMethods:
+              - GET
+              - HEAD
+            TargetOriginId: image-handler
+            TrustedSigners:
+              - !Ref AWS::AccountId
+            ForwardedValues:
+              QueryString: no
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: https-only
         DefaultRootObject: index.html
         PriceClass: !Ref CloudFrontPriceClass
         Enabled: yes
@@ -630,24 +632,28 @@ Resources:
       Policies:
         - AWSLambdaExecute
         - Statement:
-          - Effect: Allow
-            Action:
-             - s3:DeleteObject
-             - s3:PutObject
-            Resource: !Sub ${ui.Arn}/*
-          - Effect: Allow
-            Action: s3:ListBucket
-            Resource: !Sub ${ui.Arn}
+            - Effect: Allow
+              Action:
+                - s3:DeleteObject
+                - s3:PutObject
+              Resource: !Sub ${ui.Arn}/*
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !Sub ${ui.Arn}
 
 Outputs:
-
   CloudFrontDistributionDomainName:
     Value: !GetAtt CloudFrontDistribution.DomainName
 
   GalleryUrl:
     Value: !Sub
       - https://${DomainName}
-      - DomainName: !If [CustomDomainName, !Ref DomainName, !GetAtt CloudFrontDistribution.DomainName]
+      - DomainName:
+          !If [
+            CustomDomainName,
+            !Ref DomainName,
+            !GetAtt CloudFrontDistribution.DomainName,
+          ]
 
   CognitoUserPool:
     Value: !Ref CognitoUserPool

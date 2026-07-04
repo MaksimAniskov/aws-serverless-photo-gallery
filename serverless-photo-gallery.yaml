@@ -542,8 +542,6 @@ Resources:
               HTTPSPort: 443
               OriginProtocolPolicy: https-only
               OriginSSLProtocols:
-                - TLSv1
-                - TLSv1.1
                 - TLSv1.2
         DefaultCacheBehavior:
           ViewerProtocolPolicy: redirect-to-https
@@ -577,9 +575,9 @@ Resources:
           - CustomDomainName
           - AcmCertificateArn: !Ref AcmCertificateArn
             SslSupportMethod: sni-only
-            MinimumProtocolVersion: TLSv1.1_2016
+            MinimumProtocolVersion: TLSv1.3_2025
           - !Ref "AWS::NoValue"
-        HttpVersion: http2
+        HttpVersion: http2and3
         Comment: !Ref AWS::StackName
 
   CloudFrontPublicKey:

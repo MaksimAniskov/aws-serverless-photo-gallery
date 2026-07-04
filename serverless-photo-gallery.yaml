@@ -534,8 +534,8 @@ Resources:
         Origins:
           - Id: s3
             DomainName: !Sub ${ui}.s3.${AWS::Region}.amazonaws.com
-            S3OriginConfig:
-              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOAI}
+            S3OriginConfig: {}
+            OriginAccessControlId: !Ref CloudFrontOAC
           - Id: image-handler
             DomainName: !Sub ${ServerlessImageHandler.Outputs.ImageHandlerApiId}.execute-api.${AWS::Region}.amazonaws.com
             CustomOriginConfig:
@@ -598,11 +598,14 @@ Resources:
         Items:
           - !Ref CloudFrontPublicKey
 
-  CloudFrontOAI:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
     Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Ref AWS::StackName
+      OriginAccessControlConfig:
+        Name: !Sub ${AWS::StackName}
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
 
   ui:
     Type: AWS::S3::Bucket
@@ -625,9 +628,12 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+              Service: cloudfront.amazonaws.com
             Action: s3:GetObject
             Resource: !Sub ${ui.Arn}/*
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
           - Effect: Deny
             Principal: "*"
             Action: s3:*

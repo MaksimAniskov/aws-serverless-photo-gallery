@@ -47,18 +47,23 @@ Use context menu to switch back to browse mode or sign out.
 
 1. Decide on S3 bucket where you store your image files. That can be any existing bucket, or you create a new one. Optionally you provide prefix (path) which will make the application to filter non-matching files out.
 
-1. [Create CloudFront key pair](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-trusted-signers.html#private-content-creating-cloudfront-key-pairs) to be used for signing cookies. Download private key file and make a note of id of the pair.
+1. Create the key to be used by CloudFront for signing cookies. (Read [_Create a key pair for a trusted key group_](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-trusted-signers.html#private-content-creating-cloudfront-key-pairs) in _CloudFront Developer Guide_.)
+<br/>Run the following commands:
+~~~sh
+openssl genrsa -out private_key.pem 2048
+openssl rsa -pubout -in private_key.pem -out public_key.pem
+~~~
 
-## Deploy Serverless Application
+## Deploy the CloudFormation stack
 
-[Click this link](https://console.aws.amazon.com/lambda/home#/create/app?applicationId=arn:aws:serverlessrepo:us-east-1:425828444339:applications/photo-gallery)
-to open the application in AWS Serverless Application Repository console.
+1. Open [this template in your CloudFormation console](https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks/create/review?templateURL=https%3A%2F%2Faws-serverless-photo-gallery.s3.us-east-1.amazonaws.com%2Fserverless-photo-gallery-1.4.0.template&stackName=photo-gallery)
 
-In the console's top menu select region.
+1. Change the console's region as needed.
 
-Scroll down to Application settings. Fill in settings.
-
-Scroll down to find Deploy button. Click it.
+1. Fill in the parameters.
+<br/>To populate _Public Key for the CloudFront's signing_ parameter's value,
+open file _public_key.pem_ in editor, copy the content, then paste to the input field.
+Expect that there should be space characters instead of line breaks of the original file.
 
 ## Manual steps to be taken after deployment
 
@@ -66,16 +71,16 @@ Scroll down to find Deploy button. Click it.
 <br/>Create SSM parameter of Secure String type with name /_stack-name_/CLOUDFRONT_PRIVATE_KEY replacing _stack-name_ with your value, e.g. _serverlessrepo-photo-galery_.
 <br/>Set its value to CloudFront private key (see Prerequisites) preserving newline characters.
 You can do that with following AWS CLI command (don't forget to replace _stack-name_!) 
-> aws ssm put-parameter --type SecureString --name /_stack-name_/CLOUDFRONT_PRIVATE_KEY --value file://_private_key.pem_
+~~~sh
+aws ssm put-parameter --type SecureString --name /_stack-name_/CLOUDFRONT_PRIVATE_KEY --value file://private_key.pem
+~~~
 
-2. The application leverages awesome [Serverless Image Handler by AWS](https://github.com/awslabs/serverless-image-handler) which by default is configured to send usage data to AWS. In case you don't want posting such data to AWS, open AWS Lambda Console, find ```ServerlessImage-ImageHandlerFunction``` function, open it for editing, go to Environment variables, and set ```SEND_ANONYMOUS_DATA``` to ```No```.
-
-1. Optional. If you chose to use a custom public domain name,
+2. Optional. If you chose to use a custom public domain name,
 find stack in CloudFormation console,
 on its Output tab find CloudFrontDistributionDomainName.
 Configure your DNS to point domain name you chose to that.
 
-1. Find stack in CloudFormation console. On its Output tab find GalleryUrl.
+1. Find stack in CloudFormation console. On its Output tab, find GalleryUrl.
 
 1. Optional. Use Amazon Cognito Console to administer your users.
 User database is in Cognito User Pool.
@@ -83,7 +88,7 @@ Find your User Pool id among CloudFormation stack's outputs.
 
 # Credits
 
-This works uses [AWS Serverless Image Handler Lambda wrapper for SharpJS](https://github.com/awslabs/serverless-image-handler).
+This works uses components of [Dynamic Image Transformation for Amazon CloudFront solution](https://github.com/aws-solutions/dynamic-image-transformation-for-amazon-cloudfront).
 
 Demo gallery uses images by
 [Free-Photos](https://pixabay.com/users/Free-Photos-242387/),
@@ -95,4 +100,4 @@ Demo gallery uses images by
 from [Pixabay](https://pixabay.com/).
 
 ***
-Copyright 2019-2020 Maksim Aniskov MaksimAniskov@gmail.com Read LICENSE.txt
+Copyright 2019-2026 Maksim Aniskov MaksimAniskov@gmail.com Read LICENSE.txt

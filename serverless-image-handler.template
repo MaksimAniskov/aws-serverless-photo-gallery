@@ -62,7 +62,7 @@
         "SourceCode": {
             "General": {
                 "S3Bucket": "solutions",
-                "KeyPrefix": "serverless-image-handler/v4.2"
+                "KeyPrefix": "dynamic-image-transformation-for-amazon-cloudfront/v8.0.5"
             }
         }
     },
@@ -176,12 +176,12 @@
                                         "KeyPrefix"
                                     ]
                                 },
-                                "image-handler.zip"
+                                "fc7ee4c9c3ab20126354bf2f2c24246e65f2158ebfc301bcb29637e63cdcd2f2.zip"
                             ]
                         ]
                     }
                 },
-                "Runtime": "nodejs12.x",
+                "Runtime": "nodejs24.x",
                 "MemorySize": 1024,
                 "Timeout": 30,
                 "Environment" : {
@@ -323,158 +323,6 @@
                 "LogGroupName": { "Fn::Join": ["/", ["/aws/lambda", { "Ref" : "ImageHandlerFunction" }]]},
                 "RetentionInDays": { "Ref" : "LogRetentionPeriod" }
             }
-        },
-        "CustomResourceFunction": {
-            "Type": "AWS::Lambda::Function",
-            "Properties": {
-                "Code": {
-                    "S3Bucket": {
-                        "Fn::Join": [
-                            "-",
-                            [
-                                {
-                                    "Fn::FindInMap": [
-                                        "SourceCode",
-                                        "General",
-                                        "S3Bucket"
-                                    ]
-                                },
-                                {
-                                    "Ref": "AWS::Region"
-                                }
-                            ]
-                        ]
-                    },
-                    "S3Key": {
-                        "Fn::Join": [
-                            "/",
-                            [
-                                {
-                                    "Fn::FindInMap": [
-                                        "SourceCode",
-                                        "General",
-                                        "KeyPrefix"
-                                    ]
-                                },
-                                "custom-resource.zip"
-                            ]
-                        ]
-                    }
-                },
-                "Timeout": 30,
-                "Runtime": "nodejs12.x",
-                "Role": { "Fn::GetAtt": [ "CustomResourceRole", "Arn" ] },
-                "Handler": "index.handler"
-            }
-        },
-        "CustomResourceRole": {
-            "Type": "AWS::IAM::Role",
-            "Properties": {
-                "AssumeRolePolicyDocument": {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Principal": {
-                                "Service": [ "lambda.amazonaws.com" ]
-                            },
-                            "Action": [ "sts:AssumeRole" ]
-                        }
-                    ]
-                },
-                "Path": "/"
-            },
-            "Metadata": {
-                "cfn_nag": {
-                    "rules_to_suppress": [
-                        {
-                            "id": "W28",
-                            "reason": "Resource name validated and found to pose no risk to updates that require replacement of this resource."
-                        }
-                    ]
-                }
-            }
-        },
-        "CustomResourcePolicy" : {
-            "Type" : "AWS::IAM::Policy",
-            "Properties" : {
-                "PolicyDocument" : {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "logs:CreateLogStream",
-                                "logs:CreateLogGroup",
-                                "logs:PutLogEvents"
-                            ],
-                            "Resource": { "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*" }
-                        },
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "s3:GetObject",
-                                "s3:PutObject",
-                                "s3:ListBucket"
-                            ],
-                            "Resource": [
-                                "arn:aws:s3:::*"
-                            ]
-                        }
-                    ]
-                },
-                "PolicyName" : { "Fn::Join": [ "", [ { "Ref": "AWS::StackName" }, "CustomResourcePolicy" ] ] },
-                "Roles" : [ { "Ref": "CustomResourceRole" } ]
-            },
-            "Metadata": {
-                "cfn_nag": {
-                    "rules_to_suppress": [
-                        {
-                            "id": "W12",
-                            "reason": "The CustomResourcePolicy requires the * resource to validate that input from the SourceBuckets template parameter matches existing buckets within the user's account."
-                        }
-                    ]
-                }
-            }
-        },
-        "CustomResourceLogGroup": {
-            "Type": "AWS::Logs::LogGroup",
-            "Properties": {
-                "LogGroupName": { "Fn::Join": ["/", ["/aws/lambda", { "Ref" : "CustomResourceFunction" }]]},
-                "RetentionInDays": { "Ref" : "LogRetentionPeriod" }
-            }
-        },
-        "CustomResourceUuid": {
-            "Type": "Custom::CustomResource",
-            "Properties": {
-                "ServiceToken": { "Fn::GetAtt": ["CustomResourceFunction", "Arn"] },
-                "Region": [{ "Ref": "AWS::Region" }],
-                "customAction": "createUuid"
-            },
-            "DependsOn": [ "CustomResourcePolicy", "CustomResourceRole" ]
-        },
-        "CustomResourceAnonymousMetric": {
-            "Type": "Custom::CustomResource",
-            "Properties": {
-                "ServiceToken": {"Fn::GetAtt": ["CustomResourceFunction", "Arn"]},
-                "Region": [{ "Ref": "AWS::Region" }],
-                "solutionId": "SO0023",
-                "UUID": {"Fn::GetAtt": ["CustomResourceUuid", "UUID"]},
-                "version": "v4.2",
-                "anonymousData": {"Fn::FindInMap": ["Send", "AnonymousUsage", "Data"]},
-                "customAction": "sendMetric"
-            },
-            "DependsOn": [ "CustomResourcePolicy", "CustomResourceRole" ]
-        },
-        "CustomResourceCheckSourceBuckets": {
-            "Type": "Custom::CustomResource",
-            "Properties": {
-                "ServiceToken": { "Fn::GetAtt": ["CustomResourceFunction", "Arn"] },
-                "Region": [{ "Ref": "AWS::Region" }],
-                "customAction": "checkSourceBuckets",
-                "sourceBuckets": { "Ref": "SourceBuckets" }
-            },
-            "DependsOn": [ "CustomResourcePolicy", "CustomResourceRole" ]
         }
     },
     "Outputs" : {

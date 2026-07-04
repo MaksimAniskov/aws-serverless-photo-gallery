@@ -1,0 +1,778 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private Serverless Photo Gallery
+Transform: AWS::Serverless-2016-10-31
+Parameters:
+  ImagesS3BucketRegion:
+    Type: String
+  ImagesS3Bucket:
+    Type: String
+    Description: Must exist
+  ImagesS3Prefix:
+    Type: String
+    Default: ''
+    Description: Don't add leading or trailing slashes since this is to be done automatically
+  DomainName:
+    Type: String
+    Default: ''
+    Description: E.g. gallery.my-domain.com
+  AcmCertificateArn:
+    Type: String
+    Default: ''
+    Description: Must be in us-east-1 (N. Virginia) region
+  SignerPublicKey:
+    Type: String
+  CloudFrontPriceClass:
+    Type: String
+    Default: PriceClass_100
+    AllowedValues:
+    - PriceClass_100
+    - PriceClass_200
+    - PriceClass_All
+    Description: See https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PriceClass.html
+  UserName:
+    Type: String
+    Default: ''
+    Description: Specify both user name and email to create Cognito user. Otherwise
+      go to Cognito Console later on and create user(s) there.
+  UserEmail:
+    Type: String
+    Default: ''
+    Description: This address will receive a message with temporal password
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+    - Label:
+        default: Where are your images?
+      Parameters:
+      - ImagesS3Bucket
+      - ImagesS3BucketRegion
+      - ImagesS3Prefix
+    - Label:
+        default: How will we publish the application?
+      Parameters:
+      - DomainName
+      - AcmCertificateArn
+      - SignerPublicKey
+      - CloudFrontPriceClass
+    - Label:
+        default: Create gallery user?
+      Parameters:
+      - UserName
+      - UserEmail
+    ParameterLabels:
+      ImagesS3Bucket:
+        default: S3 bucket name *
+      ImagesS3BucketRegion:
+        default: Region *
+      ImagesS3Prefix:
+        default: Prefix
+      DomainName:
+        default: Domain name
+      AcmCertificateArn:
+        default: ARN of ACM Certificate for the domain name
+      SignerPublicKey:
+        default: Public Key for the CloudFront's signing
+      CloudFrontPriceClass:
+        default: CloudFront Distribution Price Class
+      UserName:
+        default: Name
+      UserEmail:
+        default: Email
+Conditions:
+  CustomDomainName:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: DomainName
+      - ''
+  CreateCognitoUser:
+    Fn::And:
+    - Fn::Not:
+      - Fn::Equals:
+        - Ref: UserName
+        - ''
+    - Fn::Not:
+      - Fn::Equals:
+        - Ref: UserEmail
+        - ''
+Resources:
+  ServerlessImageHandler:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.us-east-1.amazonaws.com/aws-serverless-photo-gallery/fee8a4ecb7cb4aa53c230aa61d6d8214.template
+      Parameters:
+        SourceBuckets:
+          Ref: ImagesS3Bucket
+  AppSyncApi:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name:
+        Ref: AWS::StackName
+      AuthenticationType: AMAZON_COGNITO_USER_POOLS
+      UserPoolConfig:
+        AwsRegion:
+          Ref: AWS::Region
+        UserPoolId:
+          Ref: CognitoUserPool
+        DefaultAction: ALLOW
+  AppSyncSchema:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      Definition: "type Query {\n  listImages(path: String, limit: Int, nextToken:\
+        \ String): ImageConnection\n  listSubfolders(path: String): [String]\n  getSignedCookies:\
+        \ [Cookie]\n}\n\ntype Image {\n  url: String\n}\n\ntype ImageConnection {\n\
+        \  items: [Image]\n  nextToken: String\n}\n\ntype Cookie {\n  name: String\n\
+        \  value: String\n}\n"
+  AppSyncDataSourceListImages:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      Name: ListImages
+      Type: AWS_LAMBDA
+      ServiceRoleArn:
+        Fn::GetAtt:
+        - AppSyncDataSourceRole
+        - Arn
+      LambdaConfig:
+        LambdaFunctionArn:
+          Fn::GetAtt:
+          - ListImages
+          - Arn
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+  AppSyncDataSourceNone:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      Name: None
+      Type: NONE
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+  AppSyncResolverQueryListImages:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceListImages
+        - Name
+      TypeName: Query
+      FieldName: listImages
+      RequestMappingTemplate: "{\n  \"version\" : \"2017-02-28\",\n  \"operation\"\
+        : \"Invoke\",\n  \"payload\": $util.toJson($ctx.arguments)\n}\n"
+      ResponseMappingTemplate: $util.toJson($ctx.result)
+  AppSyncResolverImageConnectionItems:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceNone
+        - Name
+      TypeName: ImageConnection
+      FieldName: items
+      RequestMappingTemplate: "{\n    \"version\": \"2017-02-28\",\n    \"payload\"\
+        : \"\"\n}\n"
+      ResponseMappingTemplate: $util.toJson($ctx.source.items)
+  AppSyncResolverImageUrl:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceNone
+        - Name
+      TypeName: Image
+      FieldName: url
+      RequestMappingTemplate: "{\n  \"version\" : \"2017-02-28\",\n  \"payload\":\
+        \ \"\"\n}\n"
+      ResponseMappingTemplate: $util.toJson($context.source.url)
+  AppSyncResolverImageConnectionNextToken:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceNone
+        - Name
+      TypeName: ImageConnection
+      FieldName: nextToken
+      RequestMappingTemplate: "{\n  \"version\" : \"2017-02-28\",\n  \"payload\":\
+        \ \"\"\n}\n"
+      ResponseMappingTemplate: $util.toJson($context.source.nextToken)
+  AppSyncDataSourceListSubfolders:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      Name: ListSubfolders
+      Type: AWS_LAMBDA
+      ServiceRoleArn:
+        Fn::GetAtt:
+        - AppSyncDataSourceRole
+        - Arn
+      LambdaConfig:
+        LambdaFunctionArn:
+          Fn::GetAtt:
+          - ListSubfolders
+          - Arn
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+  AppSyncResolverQueryListSubfolders:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceListSubfolders
+        - Name
+      TypeName: Query
+      FieldName: listSubfolders
+      RequestMappingTemplate: "{\n  \"version\" : \"2017-02-28\",\n  \"operation\"\
+        : \"Invoke\",\n  \"payload\": $util.toJson($ctx.arguments)\n}\n"
+      ResponseMappingTemplate: $util.toJson($ctx.result)
+  AppSyncDataSourceGetSignedCookies:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      Name: GetSignedCookies
+      Type: AWS_LAMBDA
+      ServiceRoleArn:
+        Fn::GetAtt:
+        - AppSyncDataSourceRole
+        - Arn
+      LambdaConfig:
+        LambdaFunctionArn:
+          Fn::GetAtt:
+          - GetSignedCookies
+          - Arn
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+  AppSyncResolverGetSignedCookies:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceGetSignedCookies
+        - Name
+      TypeName: Query
+      FieldName: getSignedCookies
+      RequestMappingTemplate: "{\n  \"version\" : \"2017-02-28\",\n  \"operation\"\
+        : \"Invoke\",\n  \"payload\": $util.toJson($ctx.arguments)\n}\n"
+      ResponseMappingTemplate: $util.toJson($ctx.result)
+  AppSyncResolverCookieName:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceNone
+        - Name
+      TypeName: Cookie
+      FieldName: name
+      RequestMappingTemplate: "{\n  \"version\" : \"2017-02-28\",\n  \"payload\":\
+        \ \"\"\n}\n"
+      ResponseMappingTemplate: $util.toJson($context.source.name)
+  AppSyncResolverCookieValue:
+    Type: AWS::AppSync::Resolver
+    Properties:
+      ApiId:
+        Fn::GetAtt:
+        - AppSyncApi
+        - ApiId
+      DataSourceName:
+        Fn::GetAtt:
+        - AppSyncDataSourceNone
+        - Name
+      TypeName: Cookie
+      FieldName: value
+      RequestMappingTemplate: "{\n  \"version\" : \"2017-02-28\",\n  \"payload\":\
+        \ \"\"\n}\n"
+      ResponseMappingTemplate: $util.toJson($context.source.value)
+  ListImages:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - ListImagesLambdaRole
+        - Arn
+      Environment:
+        Variables:
+          NODE_OPTIONS: --experimental-detect-module
+          BUCKET:
+            Ref: ImagesS3Bucket
+          PREFIX:
+            Ref: ImagesS3Prefix
+          LIMIT: '20'
+      Code:
+        ZipFile: "import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';\n\
+          \nconst client = new S3Client();\n\nlet prefix = process.env.PREFIX;\nif\
+          \ (prefix.length) {\n  prefix += '/';\n}\n\nexport const handler = async\
+          \ (event) => {\n  console.log('event', event);\n  const response = await\
+          \ await client.send(new ListObjectsV2Command({\n    Bucket: process.env.BUCKET,\n\
+          \    Delimiter: '/',\n    Prefix: prefix + (event.path ? event.path + '/'\
+          \ : ''),\n    MaxKeys: process.env.LIMIT,\n    ContinuationToken: event.nextToken\n\
+          \  }));\n\n  if (!response.Contents) {\n    return { items: [] };\n  }\n\
+          \  return {\n    items: response\n      .Contents\n      .filter(({ Size\
+          \ }) => Size > 0)\n      .filter(({ Key }) => Key.match(/\\.(jpeg|jpg)$/i))\n\
+          \      .map(({ Key: url }) => ({ url })),\n    nextToken: response.NextContinuationToken\n\
+          \  };\n};\n"
+  ListSubfolders:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - ListImagesLambdaRole
+        - Arn
+      Environment:
+        Variables:
+          NODE_OPTIONS: --experimental-detect-module
+          BUCKET:
+            Ref: ImagesS3Bucket
+          PREFIX:
+            Ref: ImagesS3Prefix
+      Code:
+        ZipFile: "import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';\n\
+          \nconst client = new S3Client();\n\nlet prefix = process.env.PREFIX;\nif\
+          \ (prefix.length) {\n    prefix += '/';\n}\n\nexport const handler = async\
+          \ (event) => {\n    console.log('event', event);\n    return PageFolders(event.path,\
+          \ undefined);\n};\n\nasync function PageFolders(path, continuationToken)\
+          \ {\n    if (path.length && path.charAt(path.length - 1) !== '/') {\n  \
+          \      path = path + '/';\n    }\n    const response = await await client.send(new\
+          \ ListObjectsV2Command({\n        Bucket: process.env.BUCKET,\n        Delimiter:\
+          \ '/',\n        Prefix: prefix + path,\n        ContinuationToken: continuationToken\n\
+          \    }));\n\n    if (!response.CommonPrefixes)\n        return [];\n\n \
+          \   let result = response.CommonPrefixes.map(({ Prefix }) => Prefix.slice(prefix.length\
+          \ + path.length, -1));\n\n    if (response.NextContinuationToken) {\n  \
+          \      result = result.concat(await PageFolders(path, response.NextContinuationToken));\n\
+          \    }\n    return result;\n}\n"
+  GetSignedCookies:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs24.x
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+        - GetSignedCookiesLambdaRole
+        - Arn
+      Environment:
+        Variables:
+          NODE_OPTIONS: --experimental-detect-module
+          CLOUDFRONT_PUBLIC_KEY_ID:
+            Ref: CloudFrontPublicKey
+          WILDCARD:
+            Fn::Sub:
+            - https://${DomainName}/image/*
+            - DomainName:
+                Fn::If:
+                - CustomDomainName
+                - Ref: DomainName
+                - Fn::GetAtt:
+                  - CloudFrontDistribution
+                  - DomainName
+          CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME:
+            Fn::Sub: /${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
+      Layers:
+      - Fn::Sub: arn:aws:lambda:${AWS::Region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:48
+      Code:
+        ZipFile: "import { getParameter } from '@aws-lambda-powertools/parameters/ssm';\n\
+          import { getSignedCookies } from \"@aws-sdk/cloudfront-signer\";\n\nexport\
+          \ const handler = async (event) => {\n\n  const policy = JSON.stringify({\n\
+          \    Statement: [{\n      Resource: process.env.WILDCARD,\n      Condition:\
+          \ {\n        DateLessThan: {\n          \"AWS:EpochTime\": new Date().getTime()\
+          \ + 8 * 3600 * 1000\n        }\n      }\n\n    }]\n\n  });\n\n  const keyPairId\
+          \ = process.env.CLOUDFRONT_PUBLIC_KEY_ID;\n  const ssmParam = await getParameter(\n\
+          \    process.env.CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME,\n    { decrypt:\
+          \ true }\n  );\n  const privateKey = ssmParam.split('\\n').join(\"\\n\"\
+          );\n\n  const cookies = getSignedCookies({\n    keyPairId,\n    privateKey,\n\
+          \    policy,\n  });\n\n  return Object.keys(cookies).map(name => ({ name,\
+          \ value: cookies[name] }))\n};\n"
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName:
+        Ref: AWS::StackName
+      AliasAttributes:
+      - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+  CognitoUserPollClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: CognitoUserPool
+  CognitoUser:
+    Condition: CreateCognitoUser
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      Username:
+        Ref: UserName
+      UserAttributes:
+      - Name: email
+        Value:
+          Ref: UserEmail
+      UserPoolId:
+        Ref: CognitoUserPool
+  AppSyncDataSourceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: appsync.amazonaws.com
+          Action: sts:AssumeRole
+      Policies:
+      - PolicyName: Lambda
+        PolicyDocument:
+          Statement:
+            Effect: Allow
+            Action: lambda:InvokeFunction
+            Resource:
+            - Fn::GetAtt:
+              - ListImages
+              - Arn
+            - Fn::GetAtt:
+              - ListSubfolders
+              - Arn
+            - Fn::GetAtt:
+              - GetSignedCookies
+              - Arn
+  ListImagesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: S3
+        PolicyDocument:
+          Statement:
+            Effect: Allow
+            Action: s3:ListBucket
+            Resource:
+              Fn::Sub: arn:aws:s3:::${ImagesS3Bucket}
+  GetSignedCookiesLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: lambda.amazonaws.com
+          Action: sts:AssumeRole
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+      - PolicyName: SSM
+        PolicyDocument:
+          Statement:
+            Effect: Allow
+            Action: ssm:GetParameter
+            Resource:
+              Fn::Sub: arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Aliases:
+        - Fn::If:
+          - CustomDomainName
+          - Ref: DomainName
+          - Ref: AWS::NoValue
+        Origins:
+        - Id: s3
+          DomainName:
+            Fn::Sub: ${ui}.s3.${AWS::Region}.amazonaws.com
+          S3OriginConfig:
+            OriginAccessIdentity:
+              Fn::Sub: origin-access-identity/cloudfront/${CloudFrontOAI}
+        - Id: image-handler
+          DomainName:
+            Fn::Sub: ${ServerlessImageHandler.Outputs.ImageHandlerApiId}.execute-api.${AWS::Region}.amazonaws.com
+          CustomOriginConfig:
+            HTTPSPort: 443
+            OriginProtocolPolicy: https-only
+            OriginSSLProtocols:
+            - TLSv1
+            - TLSv1.1
+            - TLSv1.2
+        DefaultCacheBehavior:
+          ViewerProtocolPolicy: redirect-to-https
+          TargetOriginId: s3
+          AllowedMethods:
+          - GET
+          - HEAD
+          Compress: true
+          ForwardedValues:
+            Cookies:
+              Forward: none
+            QueryString: false
+        CacheBehaviors:
+        - PathPattern: image/*
+          AllowedMethods:
+          - GET
+          - HEAD
+          TargetOriginId: image-handler
+          TrustedKeyGroups:
+          - Ref: CloudFrontKeyGroup
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: https-only
+        DefaultRootObject: index.html
+        PriceClass:
+          Ref: CloudFrontPriceClass
+        Enabled: true
+        IPV6Enabled: true
+        ViewerCertificate:
+          Fn::If:
+          - CustomDomainName
+          - AcmCertificateArn:
+              Ref: AcmCertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.1_2016
+          - Ref: AWS::NoValue
+        HttpVersion: http2
+        Comment:
+          Ref: AWS::StackName
+  CloudFrontPublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        Name:
+          Fn::Sub: ${AWS::StackName}
+        EncodedKey:
+          Fn::Join:
+          - ' PUBLIC KEY'
+          - Fn::Split:
+            - "\nPUBLIC\nKEY"
+            - Fn::Join:
+              - "\n"
+              - Fn::Split:
+                - ' '
+                - Ref: SignerPublicKey
+        CallerReference:
+          Ref: AWS::StackName
+  CloudFrontKeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    Properties:
+      KeyGroupConfig:
+        Name:
+          Fn::Sub: ${AWS::StackName}
+        Items:
+        - Ref: CloudFrontPublicKey
+  CloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment:
+          Ref: AWS::StackName
+  ui:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+  S3BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: ui
+      PolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            CanonicalUser:
+              Fn::GetAtt:
+              - CloudFrontOAI
+              - S3CanonicalUserId
+          Action: s3:GetObject
+          Resource:
+            Fn::Sub: ${ui.Arn}/*
+        - Effect: Deny
+          Principal: '*'
+          Action: s3:*
+          Resource:
+          - Fn::Sub: ${ui.Arn}
+          - Fn::Sub: ${ui.Arn}/*
+          Condition:
+            Bool:
+              aws:SecureTransport: 'false'
+  WebUI:
+    Type: Custom::LoadLambda
+    Properties:
+      TargetBucket:
+        Ref: ui
+      UiBundleVersion: 1.4.0
+      AwsExportsJs:
+        Fn::Sub: "window.AWS_EXPORTS = {\n    \"aws_project_region\": \"${AWS::Region}\"\
+          ,\n    \"aws_appsync_graphqlEndpoint\": \"${AppSyncApi.GraphQLUrl}\",\n\
+          \    \"aws_appsync_authenticationType\": \"AMAZON_COGNITO_USER_POOLS\",\n\
+          \    \"aws_user_pools_id\": \"${CognitoUserPool}\",\n    \"aws_user_pools_web_client_id\"\
+          : \"${CognitoUserPollClient}\"\n};\n"
+      ServiceToken:
+        Fn::GetAtt:
+        - WebUiCustomResource
+        - Arn
+  WebUiCustomResource:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs24.x
+      Handler: index.handler
+      ReservedConcurrentExecutions: 1
+      MemorySize: 256
+      Timeout: 120
+      Environment:
+        Variables:
+          NODE_OPTIONS: --experimental-detect-module
+      Policies:
+      - AWSLambdaExecute
+      - Statement:
+        - Effect: Allow
+          Action:
+          - s3:DeleteObject
+          - s3:PutObject
+          Resource:
+            Fn::Sub: ${ui.Arn}/*
+        - Effect: Allow
+          Action: s3:ListBucket
+          Resource:
+            Fn::Sub: ${ui.Arn}
+      PackageType: Zip
+      InlineCode: "import https from 'https';\nimport { S3Client, ListObjectsCommand,\
+        \ PutObjectCommand, DeleteObjectsCommand } from \"@aws-sdk/client-s3\";\n\n\
+        const s3 = new S3Client({})\n\nexport const handler = async (event, context)\
+        \ => {\n  console.log('event:', JSON.stringify(event));\n  try {\n    let\
+        \ responseData = {\n      PhysicalResourceId: `ui@${event.ResourceProperties.TargetBucket}`\n\
+        \    };\n\n    switch (event.RequestType) {\n      case 'Create':\n      case\
+        \ 'Update':\n        await fromGit2S3({\n          uiBundleVersion: event.ResourceProperties.UiBundleVersion,\n\
+        \          targetBucket: event.ResourceProperties.TargetBucket\n        });\n\
+        \        await s3.send(new PutObjectCommand({\n          Bucket: event.ResourceProperties.TargetBucket,\n\
+        \          Key: 'aws-exports.js',\n          Body: event.ResourceProperties.AwsExportsJs,\n\
+        \          ContentType: 'text/javascript'\n        }));\n        break;\n\
+        \      case 'Delete':\n        await deleteAllObjectsInS3Bucket(event.ResourceProperties.TargetBucket);\n\
+        \        break;\n    }\n\n    console.log('responseData:', JSON.stringify(responseData));\n\
+        \    await sendResponse(event, context, 'SUCCESS', responseData);\n  } catch\
+        \ (e) {\n    console.error(e);\n    await sendResponse(event, context, 'FAILED');\n\
+        \  }\n};\n\nasync function fromGit2S3({ uiBundleVersion, gitPath, targetBucket\
+        \ }) {\n\n  async function getToBuffer(options) {\n    return new Promise((resolve,\
+        \ reject) => {\n      let buffer;\n      const request = https.request(\n\
+        \        options,\n        (response) => {\n          response.on('data',\
+        \ (chunk) => {\n            if (!buffer) {\n              buffer = chunk;\n\
+        \            } else {\n              buffer = Buffer.concat([buffer, chunk]);\n\
+        \            }\n          });\n          response.on('end', () => {\n    \
+        \        resolve(buffer.toString());\n          });\n        });\n      request.on('error',\
+        \ reject);\n      request.end();\n    });\n  }\n\n  async function getFromGithub(url)\
+        \ {\n    const options = new URL(url);\n    options.method = 'GET';\n    options.headers\
+        \ = {\n      'accept': 'application/json',\n    };\n    return getToBuffer(options);\n\
+        \  }\n\n  async function getListOfFiles(url, excludeDirs = []) {\n    const\
+        \ buffer = await getFromGithub(url);\n    const entries = JSON.parse(buffer.toString()).entries;\n\
+        \    return Object.entries(entries)\n      .map(([key]) => key)\n      .filter(key\
+        \ => !excludeDirs.includes(key));\n  }\n\n  function fileExtenstionToMimeType(fileExtenstion)\
+        \ {\n    switch (fileExtenstion) {\n      case 'html': return 'text/html';\n\
+        \      case 'xml': return 'application/xml';\n      case 'json': return 'application/json';\n\
+        \      case 'js': return 'application/javascript';\n      case 'css': return\
+        \ 'text/css';\n      case 'map': return 'application/json';\n      case 'json':\
+        \ return 'application/json';\n      case 'png': return 'image/png';\n    \
+        \  case 'ico': return 'image/vnd.microsoft.icon';\n      default: return 'text/plain';\n\
+        \    }\n  }\n\n  const baseUrl = `https://github.com/MaksimAniskov/aws-serverless-photo-gallery/tree-commit-info/${uiBundleVersion}/ui/build`;\n\
+        \n  const fileNames = [\n    ...(await getListOfFiles(baseUrl, ['static',\
+        \ 'img'])),\n    ...((await getListOfFiles(baseUrl + '/static/js')).map((fileName)\
+        \ => 'static/js/' + fileName)),\n    ...((await getListOfFiles(baseUrl + '/static/css')).map((fileName)\
+        \ => 'static/css/' + fileName)),\n    ...((await getListOfFiles(baseUrl +\
+        \ '/img')).map((fileName) => 'img/' + fileName)),\n  ];\n\n  const regexp\
+        \ = `([^.]+)$`;\n\n  for (const fileName of fileNames) {\n    const options\
+        \ = new URL(`https://raw.githubusercontent.com/MaksimAniskov/aws-serverless-photo-gallery/refs/tags/${uiBundleVersion}/ui/build/${fileName}`);\n\
+        \    const fileContent = await getToBuffer(options);\n\n    await s3.send(new\
+        \ PutObjectCommand({\n      Bucket: targetBucket,\n      Key: fileName,\n\
+        \      Body: fileContent,\n      ContentType: fileExtenstionToMimeType(fileName.match(regexp)[1]),\n\
+        \    }));\n  }\n\n}\n\nasync function deleteAllObjectsInS3Bucket(Bucket) {\n\
+        \  let ContinuationToken;\n  while (true) {\n    const objects = await s3.send(new\
+        \ ListObjectsCommand({ Bucket, ContinuationToken }));\n    console.log('In\
+        \ deleteAllObjectsInS3Bucket. objects:', objects);\n    if (!objects.Contents.length)\
+        \ break;\n    await s3.send(new DeleteObjectsCommand({\n      Bucket,\n  \
+        \    Delete: {\n        Objects: objects.Contents.map(({ Key }) => ({ Key\
+        \ }))\n      }\n    }));\n    ContinuationToken = objects.NextContinuationToken;\n\
+        \    if (!ContinuationToken) break;\n  }\n}\n\n// Send response to the pre-signed\
+        \ S3 URL\nfunction sendResponse(event, context, responseStatus, responseData)\
+        \ {\n\n\n  let PhysicalResourceId;\n  if (responseData && responseData.PhysicalResourceId)\
+        \ {\n    PhysicalResourceId = responseData.PhysicalResourceId;\n  } else if\
+        \ (event.PhysicalResourceId) {\n    PhysicalResourceId = event.PhysicalResourceId;\n\
+        \  }\n  const responseBody = JSON.stringify({\n    Status: responseStatus,\n\
+        \    Reason: `See the details in CloudWatch Log Stream ${context.logGroupName}/${context.logStreamName}`,\n\
+        \    PhysicalResourceId,\n    StackId: event.StackId,\n    RequestId: event.RequestId,\n\
+        \    LogicalResourceId: event.LogicalResourceId,\n    Data: responseData\n\
+        \  });\n\n  const options = new URL(event.ResponseURL);\n  options.method\
+        \ = 'PUT';\n  options.headers = {\n    'content-type': '',\n    'content-length':\
+        \ responseBody.length\n  };\n\n  return new Promise((resolve, reject) => {\n\
+        \    const request = https.request(\n      options,\n      (response) => {\n\
+        \        console.log('STATUS:', response.statusCode);\n        console.log('HEADERS:',\
+        \ response.headers);\n        resolve();\n      });\n    request.on('error',\
+        \ reject);\n    request.write(responseBody);\n    request.end();\n  });\n\
+        }\n"
+      CodeUri: s3://aws-serverless-photo-gallery/2d16a30eb956fbfe509798fb3473dfb7
+Outputs:
+  CloudFrontDistributionDomainName:
+    Value:
+      Fn::GetAtt:
+      - CloudFrontDistribution
+      - DomainName
+  GalleryUrl:
+    Value:
+      Fn::Sub:
+      - https://${DomainName}
+      - DomainName:
+          Fn::If:
+          - CustomDomainName
+          - Ref: DomainName
+          - Fn::GetAtt:
+            - CloudFrontDistribution
+            - DomainName
+  CognitoUserPool:
+    Value:
+      Ref: CognitoUserPool

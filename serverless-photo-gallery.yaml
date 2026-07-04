@@ -26,7 +26,7 @@ Parameters:
     Default: ""
     Description: Must be in us-east-1 (N. Virginia) region
 
-  KeyPairId:
+  SignerPublicKey:
     Type: String
 
   CloudFrontPriceClass:
@@ -62,7 +62,7 @@ Metadata:
         Parameters:
           - DomainName
           - AcmCertificateArn
-          - KeyPairId
+          - SignerPublicKey
           - CloudFrontPriceClass
       - Label:
           default: Create gallery user?
@@ -81,8 +81,8 @@ Metadata:
         default: Domain name
       AcmCertificateArn:
         default: ARN of ACM Certificate for the domain name
-      KeyPairId:
-        default: Id of CloudFront Key Pair for Trusted Signer *
+      SignerPublicKey:
+        default: Public Key for the CloudFront's signing
       CloudFrontPriceClass:
         default: CloudFront Distribution Price Class
       UserName:
@@ -294,40 +294,45 @@ Resources:
   ListImages:
     Type: AWS::Lambda::Function
     Properties:
-      Runtime: nodejs12.x
+      Runtime: nodejs24.x
       Handler: index.handler
       Role: !GetAtt ListImagesLambdaRole.Arn
       Environment:
         Variables:
+          NODE_OPTIONS: --experimental-detect-module
           BUCKET: !Ref ImagesS3Bucket
           PREFIX: !Ref ImagesS3Prefix
           LIMIT: "20"
       Code:
         ZipFile: |
-          const AWS = require('aws-sdk');
-          const s3 = new AWS.S3();
+          import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+
+          const client = new S3Client();
 
           let prefix = process.env.PREFIX;
           if (prefix.length) {
-              prefix += '/';
+            prefix += '/';
           }
 
-          exports.handler = async(event) => {
+          export const handler = async (event) => {
             console.log('event', event);
-            const response = await s3.listObjectsV2({
+            const response = await await client.send(new ListObjectsV2Command({
               Bucket: process.env.BUCKET,
               Delimiter: '/',
               Prefix: prefix + (event.path ? event.path + '/' : ''),
               MaxKeys: process.env.LIMIT,
               ContinuationToken: event.nextToken
-            }).promise();
+            }));
 
+            if (!response.Contents) {
+              return { items: [] };
+            }
             return {
               items: response
                 .Contents
-                .filter(({Size}) => Size > 0)
-                .filter(({Key}) => Key.match(/\.(jpeg|jpg)$/i))
-                .map(({Key: url}) => ({ url })),
+                .filter(({ Size }) => Size > 0)
+                .filter(({ Key }) => Key.match(/\.(jpeg|jpg)$/i))
+                .map(({ Key: url }) => ({ url })),
               nextToken: response.NextContinuationToken
             };
           };
@@ -335,38 +340,44 @@ Resources:
   ListSubfolders:
     Type: AWS::Lambda::Function
     Properties:
-      Runtime: nodejs12.x
+      Runtime: nodejs24.x
       Handler: index.handler
       Role: !GetAtt ListImagesLambdaRole.Arn
       Environment:
         Variables:
+          NODE_OPTIONS: --experimental-detect-module
           BUCKET: !Ref ImagesS3Bucket
           PREFIX: !Ref ImagesS3Prefix
       Code:
         ZipFile: |
-          const AWS = require('aws-sdk');
-          const s3 = new AWS.S3();
+          import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+
+          const client = new S3Client();
 
           let prefix = process.env.PREFIX;
           if (prefix.length) {
               prefix += '/';
           }
 
-          exports.handler = async (event) => {
+          export const handler = async (event) => {
               console.log('event', event);
               return PageFolders(event.path, undefined);
           };
 
           async function PageFolders(path, continuationToken) {
-              if (path.length && path.charAt(path.length-1) !== '/') {
+              if (path.length && path.charAt(path.length - 1) !== '/') {
                   path = path + '/';
               }
-              const response = await s3.listObjectsV2({
-                    Bucket: process.env.BUCKET,
-                    Delimiter: '/',
-                    Prefix: prefix + path,
-                    ContinuationToken: continuationToken
-                }).promise();
+              const response = await await client.send(new ListObjectsV2Command({
+                  Bucket: process.env.BUCKET,
+                  Delimiter: '/',
+                  Prefix: prefix + path,
+                  ContinuationToken: continuationToken
+              }));
+
+              if (!response.CommonPrefixes)
+                  return [];
+
               let result = response.CommonPrefixes.map(({ Prefix }) => Prefix.slice(prefix.length + path.length, -1));
 
               if (response.NextContinuationToken) {
@@ -378,12 +389,13 @@ Resources:
   GetSignedCookies:
     Type: AWS::Lambda::Function
     Properties:
-      Runtime: nodejs12.x
+      Runtime: nodejs24.x
       Handler: index.handler
       Role: !GetAtt GetSignedCookiesLambdaRole.Arn
       Environment:
         Variables:
-          KEY_PAIR_ID: !Ref KeyPairId
+          NODE_OPTIONS: --experimental-detect-module
+          CLOUDFRONT_PUBLIC_KEY_ID: !Ref CloudFrontPublicKey
           WILDCARD: !Sub
             - https://${DomainName}/image/*
             - DomainName:
@@ -393,46 +405,43 @@ Resources:
                   !GetAtt CloudFrontDistribution.DomainName,
                 ]
           CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME: !Sub /${AWS::StackName}/CLOUDFRONT_PRIVATE_KEY
+      Layers:
+        - !Sub arn:aws:lambda:${AWS::Region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:48
       Code:
         ZipFile: |
-          const AWS = require('aws-sdk');
+          import { getParameter } from '@aws-lambda-powertools/parameters/ssm';
+          import { getSignedCookies } from "@aws-sdk/cloudfront-signer";
 
-          exports.handler = async(event) => {
-              const cookies = (await getSigner()).getSignedCookie({
-                  policy: JSON.stringify({
-                      Statement: [{
-                          Resource: process.env.WILDCARD,
-                          Condition: {
-                              DateLessThan: {
-                                  "AWS:EpochTime": new Date().getTime() + 8 * 3600 * 1000
-                              }
-                          }
+          export const handler = async (event) => {
 
-                      }]
+            const policy = JSON.stringify({
+              Statement: [{
+                Resource: process.env.WILDCARD,
+                Condition: {
+                  DateLessThan: {
+                    "AWS:EpochTime": new Date().getTime() + 8 * 3600 * 1000
+                  }
+                }
 
-                  })
-              });
+              }]
 
-              return Object.keys(cookies).map(name => ({ name, value: cookies[name] }))
+            });
+
+            const keyPairId = process.env.CLOUDFRONT_PUBLIC_KEY_ID;
+            const ssmParam = await getParameter(
+              process.env.CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME,
+              { decrypt: true }
+            );
+            const privateKey = ssmParam.split('\n').join("\n");
+
+            const cookies = getSignedCookies({
+              keyPairId,
+              privateKey,
+              policy,
+            });
+
+            return Object.keys(cookies).map(name => ({ name, value: cookies[name] }))
           };
-
-          let _signer;
-
-          async function getSigner() {
-              if (!_signer) {
-                  const ssm = new AWS.SSM();
-                  const cloudFormationPrivateKey = await ssm.getParameter({
-                      Name: process.env.CLOUDFRONT_PRIVATE_KEY_SSM_PARAM_NAME,
-                      WithDecryption: true
-                  }).promise();
-
-                  _signer = new AWS.CloudFront.Signer(
-                      process.env.KEY_PAIR_ID,
-                      cloudFormationPrivateKey.Parameter.Value.split('\n').join("\n")
-                  );
-              };
-              return _signer;
-          }
 
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
@@ -553,8 +562,8 @@ Resources:
               - GET
               - HEAD
             TargetOriginId: image-handler
-            TrustedSigners:
-              - !Ref AWS::AccountId
+            TrustedKeyGroups:
+              - !Ref CloudFrontKeyGroup
             ForwardedValues:
               QueryString: no
               Cookies:
@@ -572,6 +581,22 @@ Resources:
           - !Ref "AWS::NoValue"
         HttpVersion: http2
         Comment: !Ref AWS::StackName
+
+  CloudFrontPublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        Name: !Sub ${AWS::StackName}
+        EncodedKey: !Join [ " PUBLIC KEY", !Split [ "\nPUBLIC\nKEY" , !Join [ "\n", !Split [ " " , !Ref SignerPublicKey ] ] ] ]
+        CallerReference: !Ref AWS::StackName
+
+  CloudFrontKeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    Properties:
+      KeyGroupConfig:
+        Name: !Sub ${AWS::StackName}
+        Items:
+          - !Ref CloudFrontPublicKey
 
   CloudFrontOAI:
     Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
@@ -617,8 +642,7 @@ Resources:
     Type: Custom::LoadLambda
     Properties:
       TargetBucket: !Ref ui
-      GitArchiveUrl: https://codeload.github.com/MaksimAniskov/aws-serverless-photo-gallery/zip/1.3.1
-      GitPath: ui/build
+      UiBundleVersion: 1.4.0
       AwsExportsJs: !Sub |
         window.AWS_EXPORTS = {
             "aws_project_region": "${AWS::Region}",
@@ -632,12 +656,14 @@ Resources:
   WebUiCustomResource:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: nodejs12.x
+      Runtime: nodejs24.x
       Handler: index.handler
       ReservedConcurrentExecutions: 1
       MemorySize: 256
-      Timeout: 60
-      CodeUri: aws-lambda/web-ui-custom-resource
+      Timeout: 120
+      Environment:
+        Variables:
+          NODE_OPTIONS: --experimental-detect-module
       Policies:
         - AWSLambdaExecute
         - Statement:
@@ -649,6 +675,185 @@ Resources:
             - Effect: Allow
               Action: s3:ListBucket
               Resource: !Sub ${ui.Arn}
+      PackageType: Zip
+      InlineCode: |
+        import https from 'https';
+        import { S3Client, ListObjectsCommand, PutObjectCommand, DeleteObjectsCommand } from "@aws-sdk/client-s3";
+
+        const s3 = new S3Client({})
+
+        export const handler = async (event, context) => {
+          console.log('event:', JSON.stringify(event));
+          try {
+            let responseData = {
+              PhysicalResourceId: `ui@${event.ResourceProperties.TargetBucket}`
+            };
+
+            switch (event.RequestType) {
+              case 'Create':
+              case 'Update':
+                await fromGit2S3({
+                  uiBundleVersion: event.ResourceProperties.UiBundleVersion,
+                  targetBucket: event.ResourceProperties.TargetBucket
+                });
+                await s3.send(new PutObjectCommand({
+                  Bucket: event.ResourceProperties.TargetBucket,
+                  Key: 'aws-exports.js',
+                  Body: event.ResourceProperties.AwsExportsJs,
+                  ContentType: 'text/javascript'
+                }));
+                break;
+              case 'Delete':
+                await deleteAllObjectsInS3Bucket(event.ResourceProperties.TargetBucket);
+                break;
+            }
+
+            console.log('responseData:', JSON.stringify(responseData));
+            await sendResponse(event, context, 'SUCCESS', responseData);
+          } catch (e) {
+            console.error(e);
+            await sendResponse(event, context, 'FAILED');
+          }
+        };
+
+        async function fromGit2S3({ uiBundleVersion, gitPath, targetBucket }) {
+
+          async function getToBuffer(options) {
+            return new Promise((resolve, reject) => {
+              let buffer;
+              const request = https.request(
+                options,
+                (response) => {
+                  response.on('data', (chunk) => {
+                    if (!buffer) {
+                      buffer = chunk;
+                    } else {
+                      buffer = Buffer.concat([buffer, chunk]);
+                    }
+                  });
+                  response.on('end', () => {
+                    resolve(buffer.toString());
+                  });
+                });
+              request.on('error', reject);
+              request.end();
+            });
+          }
+
+          async function getFromGithub(url) {
+            const options = new URL(url);
+            options.method = 'GET';
+            options.headers = {
+              'accept': 'application/json',
+            };
+            return getToBuffer(options);
+          }
+
+          async function getListOfFiles(url, excludeDirs = []) {
+            const buffer = await getFromGithub(url);
+            const entries = JSON.parse(buffer.toString()).entries;
+            return Object.entries(entries)
+              .map(([key]) => key)
+              .filter(key => !excludeDirs.includes(key));
+          }
+
+          function fileExtenstionToMimeType(fileExtenstion) {
+            switch (fileExtenstion) {
+              case 'html': return 'text/html';
+              case 'xml': return 'application/xml';
+              case 'json': return 'application/json';
+              case 'js': return 'application/javascript';
+              case 'css': return 'text/css';
+              case 'map': return 'application/json';
+              case 'json': return 'application/json';
+              case 'png': return 'image/png';
+              case 'ico': return 'image/vnd.microsoft.icon';
+              default: return 'text/plain';
+            }
+          }
+
+          const baseUrl = `https://github.com/MaksimAniskov/aws-serverless-photo-gallery/tree-commit-info/${uiBundleVersion}/ui/build`;
+
+          const fileNames = [
+            ...(await getListOfFiles(baseUrl, ['static', 'img'])),
+            ...((await getListOfFiles(baseUrl + '/static/js')).map((fileName) => 'static/js/' + fileName)),
+            ...((await getListOfFiles(baseUrl + '/static/css')).map((fileName) => 'static/css/' + fileName)),
+            ...((await getListOfFiles(baseUrl + '/img')).map((fileName) => 'img/' + fileName)),
+          ];
+
+          const regexp = `([^.]+)$`;
+
+          for (const fileName of fileNames) {
+            const options = new URL(`https://raw.githubusercontent.com/MaksimAniskov/aws-serverless-photo-gallery/refs/tags/${uiBundleVersion}/ui/build/${fileName}`);
+            const fileContent = await getToBuffer(options);
+
+            await s3.send(new PutObjectCommand({
+              Bucket: targetBucket,
+              Key: fileName,
+              Body: fileContent,
+              ContentType: fileExtenstionToMimeType(fileName.match(regexp)[1]),
+            }));
+          }
+
+        }
+
+        async function deleteAllObjectsInS3Bucket(Bucket) {
+          let ContinuationToken;
+          while (true) {
+            const objects = await s3.send(new ListObjectsCommand({ Bucket, ContinuationToken }));
+            console.log('In deleteAllObjectsInS3Bucket. objects:', objects);
+            if (!objects.Contents.length) break;
+            await s3.send(new DeleteObjectsCommand({
+              Bucket,
+              Delete: {
+                Objects: objects.Contents.map(({ Key }) => ({ Key }))
+              }
+            }));
+            ContinuationToken = objects.NextContinuationToken;
+            if (!ContinuationToken) break;
+          }
+        }
+
+        // Send response to the pre-signed S3 URL
+        function sendResponse(event, context, responseStatus, responseData) {
+
+
+          let PhysicalResourceId;
+          if (responseData && responseData.PhysicalResourceId) {
+            PhysicalResourceId = responseData.PhysicalResourceId;
+          } else if (event.PhysicalResourceId) {
+            PhysicalResourceId = event.PhysicalResourceId;
+          }
+          const responseBody = JSON.stringify({
+            Status: responseStatus,
+            Reason: `See the details in CloudWatch Log Stream ${context.logGroupName}/${context.logStreamName}`,
+            PhysicalResourceId,
+            StackId: event.StackId,
+            RequestId: event.RequestId,
+            LogicalResourceId: event.LogicalResourceId,
+            Data: responseData
+          });
+
+          const options = new URL(event.ResponseURL);
+          options.method = 'PUT';
+          options.headers = {
+            'content-type': '',
+            'content-length': responseBody.length
+          };
+
+          return new Promise((resolve, reject) => {
+            const request = https.request(
+              options,
+              (response) => {
+                console.log('STATUS:', response.statusCode);
+                console.log('HEADERS:', response.headers);
+                resolve();
+              });
+            request.on('error', reject);
+            request.write(responseBody);
+            request.end();
+          });
+        }
 
 Outputs:
   CloudFrontDistributionDomainName:
